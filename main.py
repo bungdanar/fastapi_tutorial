@@ -1,9 +1,9 @@
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Literal
 import random
 
-from fastapi import FastAPI, Query
-from pydantic import BaseModel, AfterValidator
+from fastapi import FastAPI, Query, Path
+from pydantic import BaseModel, AfterValidator, Field, HttpUrl
 
 
 class ModelName(str, Enum):
@@ -12,11 +12,45 @@ class ModelName(str, Enum):
     lenet = "lenet"
 
 
+class Image(BaseModel):
+    url: HttpUrl
+    name: str
+
+
 class Item(BaseModel):
+    name: str
+    description: str | None = Field(
+        default=None, description="The description of the item", max_length=300
+    )
+    price: float = Field(
+        gt=0, description="The price must be greater than 0"
+    )
+    tax: float | None = None
+    tags: set[str] = set()
+    images: list[Image]
+
+
+class Offer(BaseModel):
     name: str
     description: str | None = None
     price: float
-    tax: float | None = None
+    items: list[Item]
+
+
+class User(BaseModel):
+    username: str
+    full_name: str | None = Field(alias='fullName', default=None)
+
+
+class FilterParams(BaseModel):
+    model_config = {
+        "extra": 'forbid'
+    }
+
+    limit: int = Field(100, gt=0, le=100)
+    offset: int = Field(0, ge=0)
+    order_by: Literal['created_at', 'updated_at'] = 'created_at'
+    tags: list[str] = []
 
 
 app = FastAPI()
@@ -43,22 +77,28 @@ async def root():
     }
 
 
+@app.post('/offers/')
+async def create_offer(offer: Offer):
+    return offer
+
+
 @app.get('/items/')
 async def read_item(
-    skip: int = 0,
-    limit: int = 10,
-    id: Annotated[str | None, AfterValidator(check_valid_id)] = None
+    filter_query: Annotated[FilterParams, Query()],
+    # id: Annotated[str | None, AfterValidator(check_valid_id)] = None
 ):
 
-    if id:
-        name = data.get(id)
-    else:
-        id, name = random.choice(list(data.items()))
+    # if id:
+    #     name = data.get(id)
+    # else:
+    #     id, name = random.choice(list(data.items()))
 
-    return {
-        'id': id,
-        'name': name
-    }
+    # return {
+    #     'id': id,
+    #     'name': name
+    # }
+
+    return filter_query
 
 
 @app.post('/items/')
@@ -73,12 +113,30 @@ async def create_item(item: Item):
     return item_dict
 
 
-@app.put('/items/{item_id}')
-async def update_item(item_id: int, item: Item):
-    return {
-        "item_id": item_id,
-        **item.model_dump()
+@app.get('/items/{item_id}')
+async def read_item(
+    item_id: Annotated[int, Path(description="The ID of the item to get", gt=0, le=100)],
+    q: Annotated[str | None, Query(alias='item-query')] = None
+):
+    results = {
+        'item_id': item_id,
     }
+
+    if q:
+        results.update({"q": q})
+
+    return results
+
+
+@app.put('/items/{item_id}')
+async def update_item(item_id: int, item: Item, user: User):
+    results = {
+        'item_id': item_id,
+        'item': item,
+        'user': user
+    }
+
+    return results
 
 
 @app.get('/models/{model_name}')
