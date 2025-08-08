@@ -1,8 +1,9 @@
 from enum import Enum
 from typing import Annotated, Literal
 import random
+from uuid import UUID
 
-from fastapi import FastAPI, Query, Path
+from fastapi import FastAPI, Query, Path, Body
 from pydantic import BaseModel, AfterValidator, Field, HttpUrl
 
 
@@ -18,16 +19,17 @@ class Image(BaseModel):
 
 
 class Item(BaseModel):
-    name: str
+    name: str = Field(examples=["Foo"])
     description: str | None = Field(
-        default=None, description="The description of the item", max_length=300
+        default=None, description="The description of the item", max_length=300, examples=["A very nice Item"]
     )
     price: float = Field(
-        gt=0, description="The price must be greater than 0"
+        gt=0, description="The price must be greater than 0", examples=[12.34]
     )
-    tax: float | None = None
-    tags: set[str] = set()
-    images: list[Image]
+    tax: float | None = Field(default=None, examples=[3.45])
+
+    # tags: set[str] = set()
+    # images: list[Image]
 
 
 class Offer(BaseModel):
@@ -129,11 +131,38 @@ async def read_item(
 
 
 @app.put('/items/{item_id}')
-async def update_item(item_id: int, item: Item, user: User):
+async def update_item(item_id: UUID, item: Annotated[Item, Body(
+    openapi_examples={
+        "normal": {
+            "summary": "A normal example",
+            "description": "A **normal** item works correctly.",
+            "value": {
+                "name": "Foo",
+                        "description": "A very nice Item",
+                        "price": 35.4,
+                        "tax": 3.2,
+            },
+        },
+        "converted": {
+            "summary": "An example with converted data",
+            "description": "FastAPI can convert price `strings` to actual `numbers` automatically",
+            "value": {
+                "name": "Bar",
+                        "price": "35.4",
+            },
+        },
+        "invalid": {
+            "summary": "Invalid data is rejected with an error",
+            "value": {
+                "name": "Baz",
+                        "price": "thirty five point four",
+            },
+        },
+    },
+)]):
     results = {
         'item_id': item_id,
         'item': item,
-        'user': user
     }
 
     return results
