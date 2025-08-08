@@ -1,58 +1,11 @@
-from enum import Enum
-from typing import Annotated, Literal
+from typing import Annotated
 import random
 from uuid import UUID
 
-from fastapi import FastAPI, Query, Path, Body
-from pydantic import BaseModel, AfterValidator, Field, HttpUrl
+from fastapi import FastAPI, Query, Path, Body, Cookie, Header
+from pydantic import AfterValidator
 
-
-class ModelName(str, Enum):
-    alexnet = "alexnet"
-    resnet = "resnet"
-    lenet = "lenet"
-
-
-class Image(BaseModel):
-    url: HttpUrl
-    name: str
-
-
-class Item(BaseModel):
-    name: str = Field(examples=["Foo"])
-    description: str | None = Field(
-        default=None, description="The description of the item", max_length=300, examples=["A very nice Item"]
-    )
-    price: float = Field(
-        gt=0, description="The price must be greater than 0", examples=[12.34]
-    )
-    tax: float | None = Field(default=None, examples=[3.45])
-
-    # tags: set[str] = set()
-    # images: list[Image]
-
-
-class Offer(BaseModel):
-    name: str
-    description: str | None = None
-    price: float
-    items: list[Item]
-
-
-class User(BaseModel):
-    username: str
-    full_name: str | None = Field(alias='fullName', default=None)
-
-
-class FilterParams(BaseModel):
-    model_config = {
-        "extra": 'forbid'
-    }
-
-    limit: int = Field(100, gt=0, le=100)
-    offset: int = Field(0, ge=0)
-    order_by: Literal['created_at', 'updated_at'] = 'created_at'
-    tags: list[str] = []
+from models import CommonHeaders, Cookies, FilterParams, Item, ModelName, Offer
 
 
 app = FastAPI()
@@ -87,6 +40,8 @@ async def create_offer(offer: Offer):
 @app.get('/items/')
 async def read_item(
     filter_query: Annotated[FilterParams, Query()],
+    cookies: Annotated[Cookies, Cookie()],
+    headers: Annotated[CommonHeaders, Header()],
     # id: Annotated[str | None, AfterValidator(check_valid_id)] = None
 ):
 
@@ -99,8 +54,11 @@ async def read_item(
     #     'id': id,
     #     'name': name
     # }
+    results = filter_query.model_dump()
+    results.update({"cookies": cookies.model_dump()})
+    results.update({"headers": headers.model_dump()})
 
-    return filter_query
+    return results
 
 
 @app.post('/items/')
