@@ -92,3 +92,12 @@ class CarItem(BaseItem):
 class PlaneItem(BaseItem):
     type: str = "plane"
     size: int
+
+
+class FormData(BaseModel):
+    username: str
+    password: str
+
+    model_config = {
+        "extra": 'forbid'
+    }

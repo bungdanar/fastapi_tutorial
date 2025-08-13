@@ -2,10 +2,10 @@ from typing import Annotated, Any, Union
 import random
 from uuid import UUID
 
-from fastapi import FastAPI, Query, Path, Body, Cookie, Header
+from fastapi import FastAPI, Form, Query, Path, Body, Cookie, Header, status
 from pydantic import AfterValidator
 
-from models import CarItem, CommonHeaders, Cookies, FilterParams, Item, ModelName, Offer, PlaneItem, UserIn
+from models import CarItem, CommonHeaders, Cookies, FilterParams, FormData, Item, ModelName, Offer, PlaneItem, UserIn
 from utils import fake_save_user
 from data import items  # Assuming items is defined in database.py
 
@@ -68,7 +68,7 @@ async def read_items(
     ]
 
 
-@app.post('/items/', response_model=Item)
+@app.post('/items/', response_model=Item, status_code=status.HTTP_201_CREATED)
 async def create_item(item: Item) -> Any:
     item_dict = item.model_dump()
     if item.tax is not None:
@@ -152,3 +152,11 @@ async def get_model(model_name: ModelName):
 async def create_user(user: UserIn):
     user_saved = fake_save_user(user)
     return user_saved
+
+
+@app.post('/login/')
+async def login(data: Annotated[FormData, Form()]):
+    return {
+        "username": data.username,
+        "message": "Login successful"
+    }
