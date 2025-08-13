@@ -1,11 +1,13 @@
-from typing import Annotated, Any
+from typing import Annotated, Any, Union
 import random
 from uuid import UUID
 
 from fastapi import FastAPI, Query, Path, Body, Cookie, Header
 from pydantic import AfterValidator
 
-from models import CommonHeaders, Cookies, FilterParams, Item, ModelName, Offer, UserIn, BaseUser
+from models import CarItem, CommonHeaders, Cookies, FilterParams, Item, ModelName, Offer, PlaneItem, UserIn
+from utils import fake_save_user
+from data import items  # Assuming items is defined in database.py
 
 
 app = FastAPI()
@@ -78,19 +80,14 @@ async def create_item(item: Item) -> Any:
     return Item(**item_dict)
 
 
-@app.get('/items/{item_id}')
+@app.get('/items/{item_id}', response_model=Union[PlaneItem, CarItem])
 async def read_item(
-    item_id: Annotated[int, Path(description="The ID of the item to get", gt=0, le=100)],
+    # item_id: Annotated[int, Path(description="The ID of the item to get", gt=0, le=100)],
+    item_id: str,
     q: Annotated[str | None, Query(alias='item-query')] = None
 ):
-    results: dict[str, Any] = {
-        'item_id': item_id,
-    }
 
-    if q:
-        results.update({"q": q})
-
-    return results
+    return items[item_id]
 
 
 @app.put('/items/{item_id}')
@@ -152,5 +149,6 @@ async def get_model(model_name: ModelName):
 
 
 @app.post('/users/')
-async def create_user(user: UserIn) -> BaseUser:
-    return user
+async def create_user(user: UserIn):
+    user_saved = fake_save_user(user)
+    return user_saved
