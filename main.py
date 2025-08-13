@@ -2,7 +2,8 @@ from typing import Annotated, Any, Union
 import random
 from uuid import UUID
 
-from fastapi import FastAPI, Form, Query, Path, Body, Cookie, Header, status
+from fastapi import FastAPI, Form, Query, Path, Body, Cookie, Header, UploadFile, status
+from fastapi.params import File
 from pydantic import AfterValidator
 
 from models import CarItem, CommonHeaders, Cookies, FilterParams, FormData, Item, ModelName, Offer, PlaneItem, UserIn
@@ -159,4 +160,47 @@ async def login(data: Annotated[FormData, Form()]):
     return {
         "username": data.username,
         "message": "Login successful"
+    }
+
+
+@app.post('/file/')
+async def create_file(file: Annotated[bytes, File(description='A file read as bytes')]):
+    return {
+        'file_size': len(file)
+    }
+
+
+@app.post('/files/')
+async def create_files(files: Annotated[list[bytes], File(description='Multiple files as bytes')]):
+    return {
+        'file_sizes': [len(file) for file in files]
+    }
+
+
+@app.post('/uploadfile/')
+async def create_upload_file(file: Annotated[UploadFile, File(description='A file read as UploadFile')]):
+    return {
+        'filename': file.filename
+    }
+
+
+@app.post('/uploadfiles/')
+async def create_upload_files(files: Annotated[list[UploadFile], File(description='Multiple files as UploadFile')]):
+    return {
+        'filenames': [file.filename for file in files]
+    }
+
+
+@app.post('/complex-form/')
+async def create_complex_form(
+    file: Annotated[bytes, File()],
+    fileb: Annotated[UploadFile, File()],
+    username: Annotated[str, Form()],
+    password: Annotated[str, Form()],
+):
+    return {
+        'file_size': len(file),
+        'fileb_content_type': fileb.content_type,
+        'username': username,
+        'password': password
     }
