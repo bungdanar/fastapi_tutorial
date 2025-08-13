@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, EmailStr, Field, HttpUrl
 
 
 class ModelName(str, Enum):
@@ -60,3 +60,13 @@ class Cookies(BaseModel):
 class CommonHeaders(BaseModel):
     user_agent: str | None = None
     x_token: list[str] = []
+
+
+class BaseUser(BaseModel):
+    username: str
+    email: EmailStr
+    full_name: str | None = None
+
+
+class UserIn(BaseUser):
+    password: str

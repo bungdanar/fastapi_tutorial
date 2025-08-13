@@ -1,11 +1,11 @@
-from typing import Annotated
+from typing import Annotated, Any
 import random
 from uuid import UUID
 
 from fastapi import FastAPI, Query, Path, Body, Cookie, Header
 from pydantic import AfterValidator
 
-from models import CommonHeaders, Cookies, FilterParams, Item, ModelName, Offer
+from models import CommonHeaders, Cookies, FilterParams, Item, ModelName, Offer, UserIn, BaseUser
 
 
 app = FastAPI()
@@ -37,13 +37,13 @@ async def create_offer(offer: Offer):
     return offer
 
 
-@app.get('/items/')
-async def read_item(
+@app.get('/items/', response_model=list[Item])
+async def read_items(
     filter_query: Annotated[FilterParams, Query()],
     cookies: Annotated[Cookies, Cookie()],
     headers: Annotated[CommonHeaders, Header()],
     # id: Annotated[str | None, AfterValidator(check_valid_id)] = None
-):
+) -> Any:
 
     # if id:
     #     name = data.get(id)
@@ -54,15 +54,20 @@ async def read_item(
     #     'id': id,
     #     'name': name
     # }
-    results = filter_query.model_dump()
-    results.update({"cookies": cookies.model_dump()})
-    results.update({"headers": headers.model_dump()})
+    # results = filter_query.model_dump()
+    # results.update({"cookies": cookies.model_dump()})
+    # results.update({"headers": headers.model_dump()})
 
-    return results
+    # return results
+
+    return [
+        Item(name="Portal Gun", price=42.0),
+        Item(name="Plumbus", price=32.0),
+    ]
 
 
-@app.post('/items/')
-async def create_item(item: Item):
+@app.post('/items/', response_model=Item)
+async def create_item(item: Item) -> Any:
     item_dict = item.model_dump()
     if item.tax is not None:
         price_with_tax = item.price + item.tax
@@ -70,7 +75,7 @@ async def create_item(item: Item):
             'price_with_tax': price_with_tax
         })
 
-    return item_dict
+    return Item(**item_dict)
 
 
 @app.get('/items/{item_id}')
@@ -78,7 +83,7 @@ async def read_item(
     item_id: Annotated[int, Path(description="The ID of the item to get", gt=0, le=100)],
     q: Annotated[str | None, Query(alias='item-query')] = None
 ):
-    results = {
+    results: dict[str, Any] = {
         'item_id': item_id,
     }
 
@@ -144,3 +149,8 @@ async def get_model(model_name: ModelName):
         "model_name": model_name,
         "message": "This is the ResNet model."
     }
+
+
+@app.post('/users/')
+async def create_user(user: UserIn) -> BaseUser:
+    return user
