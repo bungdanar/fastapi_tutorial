@@ -2,8 +2,9 @@ from typing import Annotated, Any, Union
 import random
 from uuid import UUID
 
-from fastapi import FastAPI, Form, Query, Path, Body, Cookie, Header, UploadFile, status
+from fastapi import FastAPI, Form, Query, Path, Body, Cookie, Header, UploadFile, status, HTTPException, Request
 from fastapi.params import File
+from fastapi.responses import JSONResponse
 from pydantic import AfterValidator
 
 from models import CarItem, CommonHeaders, Cookies, FilterParams, FormData, Item, ModelName, Offer, PlaneItem, UserIn
@@ -11,7 +12,22 @@ from utils import fake_save_user
 from data import items  # Assuming items is defined in database.py
 
 
+class UnicornException(Exception):
+    def __init__(self, name: str):
+        self.name = name
+
+
 app = FastAPI()
+
+
+@app.exception_handler(UnicornException)
+async def unicorn_exception_handler(request: Request, exc: UnicornException):
+    return JSONResponse(
+        status_code=418,
+        content={
+            'message': f'Oops! {exc.name} did something. There goes a rainbow...'
+        }
+    )
 
 
 data = {
@@ -81,14 +97,19 @@ async def create_item(item: Item) -> Any:
     return Item(**item_dict)
 
 
-@app.get('/items/{item_id}', response_model=Union[PlaneItem, CarItem])
+@app.get('/items/{item_id}')
 async def read_item(
     # item_id: Annotated[int, Path(description="The ID of the item to get", gt=0, le=100)],
     item_id: str,
     q: Annotated[str | None, Query(alias='item-query')] = None
 ):
+    if item_id not in items:
+        raise HTTPException(status_code=404, detail='Item not found', headers={
+                            'X-Error': 'There goes my error'})
 
-    return items[item_id]
+    return {
+        'item': items[item_id],
+    }
 
 
 @app.put('/items/{item_id}')
@@ -203,4 +224,13 @@ async def create_complex_form(
         'fileb_content_type': fileb.content_type,
         'username': username,
         'password': password
+    }
+
+
+@app.get('/unicorns/{name}')
+async def read_unicorn(name: str):
+    if name == 'yolo':
+        raise UnicornException(name=name)
+    return {
+        'unicorn_name': name
     }
