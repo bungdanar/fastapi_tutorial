@@ -3,11 +3,12 @@ import random
 from uuid import UUID
 
 from fastapi import FastAPI, Form, Query, Path, Body, Cookie, Header, UploadFile, status, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.params import File
 from fastapi.responses import JSONResponse
 from pydantic import AfterValidator
 
-from models import CarItem, CommonHeaders, Cookies, FilterParams, FormData, Item, ModelName, Offer, PlaneItem, UserIn
+from models import CarItem, CommonHeaders, Cookies, FilterParams, FormData, Item, ModelName, Offer, PlaneItem, Tags, UserIn
 from utils import fake_save_user
 from data import items  # Assuming items is defined in database.py
 
@@ -51,12 +52,12 @@ async def root():
     }
 
 
-@app.post('/offers/')
+@app.post('/offers/', tags=[Tags.offers])
 async def create_offer(offer: Offer):
     return offer
 
 
-@app.get('/items/', response_model=list[Item])
+@app.get('/items/', response_model=list[Item], tags=[Tags.items])
 async def read_items(
     filter_query: Annotated[FilterParams, Query()],
     cookies: Annotated[Cookies, Cookie()],
@@ -85,8 +86,25 @@ async def read_items(
     ]
 
 
-@app.post('/items/', response_model=Item, status_code=status.HTTP_201_CREATED)
+@app.post(
+    '/items/',
+    response_model=Item,
+    status_code=status.HTTP_201_CREATED,
+    tags=[Tags.items],
+    summary="Create an item",
+    response_description="The created item",
+)
 async def create_item(item: Item) -> Any:
+    """
+    Create an item with all the information:
+
+    - **name**: each item must have a name
+    - **description**: a long description
+    - **price**: required
+    - **tax**: if the item doesn't have tax, you can omit this
+    - **tags**: a set of unique tag strings for this item
+    """
+
     item_dict = item.model_dump()
     if item.tax is not None:
         price_with_tax = item.price + item.tax
@@ -97,7 +115,7 @@ async def create_item(item: Item) -> Any:
     return Item(**item_dict)
 
 
-@app.get('/items/{item_id}')
+@app.get('/items/{item_id}', tags=[Tags.items])
 async def read_item(
     # item_id: Annotated[int, Path(description="The ID of the item to get", gt=0, le=100)],
     item_id: str,
@@ -112,8 +130,8 @@ async def read_item(
     }
 
 
-@app.put('/items/{item_id}')
-async def update_item(item_id: UUID, item: Annotated[Item, Body(
+@app.put('/items/{item_id}', tags=[Tags.items], response_model=Item)
+async def update_item(item_id: str, item: Annotated[Item, Body(
     openapi_examples={
         "normal": {
             "summary": "A normal example",
@@ -142,15 +160,12 @@ async def update_item(item_id: UUID, item: Annotated[Item, Body(
         },
     },
 )]):
-    results = {
-        'item_id': item_id,
-        'item': item,
-    }
-
-    return results
+    update_item_encoded = jsonable_encoder(item)
+    items[item_id] = update_item_encoded
+    return update_item_encoded
 
 
-@app.get('/models/{model_name}')
+@app.get('/models/{model_name}', tags=[Tags.models])
 async def get_model(model_name: ModelName):
     if model_name is ModelName.alexnet:
         return {
@@ -170,13 +185,13 @@ async def get_model(model_name: ModelName):
     }
 
 
-@app.post('/users/')
+@app.post('/users/', tags=[Tags.users])
 async def create_user(user: UserIn):
     user_saved = fake_save_user(user)
     return user_saved
 
 
-@app.post('/login/')
+@app.post('/login/', tags=[Tags.auth])
 async def login(data: Annotated[FormData, Form()]):
     return {
         "username": data.username,
@@ -184,35 +199,35 @@ async def login(data: Annotated[FormData, Form()]):
     }
 
 
-@app.post('/file/')
+@app.post('/file/', tags=[Tags.files])
 async def create_file(file: Annotated[bytes, File(description='A file read as bytes')]):
     return {
         'file_size': len(file)
     }
 
 
-@app.post('/files/')
+@app.post('/files/', tags=[Tags.files])
 async def create_files(files: Annotated[list[bytes], File(description='Multiple files as bytes')]):
     return {
         'file_sizes': [len(file) for file in files]
     }
 
 
-@app.post('/uploadfile/')
+@app.post('/uploadfile/', tags=[Tags.files])
 async def create_upload_file(file: Annotated[UploadFile, File(description='A file read as UploadFile')]):
     return {
         'filename': file.filename
     }
 
 
-@app.post('/uploadfiles/')
+@app.post('/uploadfiles/', tags=[Tags.files])
 async def create_upload_files(files: Annotated[list[UploadFile], File(description='Multiple files as UploadFile')]):
     return {
         'filenames': [file.filename for file in files]
     }
 
 
-@app.post('/complex-form/')
+@app.post('/complex-form/', tags=[Tags.etc])
 async def create_complex_form(
     file: Annotated[bytes, File()],
     fileb: Annotated[UploadFile, File()],
@@ -227,7 +242,7 @@ async def create_complex_form(
     }
 
 
-@app.get('/unicorns/{name}')
+@app.get('/unicorns/{name}', tags=[Tags.etc])
 async def read_unicorn(name: str):
     if name == 'yolo':
         raise UnicornException(name=name)

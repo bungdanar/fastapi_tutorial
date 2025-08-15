@@ -10,6 +10,16 @@ class ModelName(str, Enum):
     lenet = "lenet"
 
 
+class Tags(str, Enum):
+    items = "items"
+    models = "models"
+    users = "users"
+    auth = "auth"
+    files = "files"
+    etc = "etc"
+    offers = "offers"
+
+
 class Image(BaseModel):
     url: HttpUrl
     name: str
