@@ -2,14 +2,14 @@ from typing import Annotated, Any, Union
 import random
 from uuid import UUID
 
-from fastapi import FastAPI, Form, Query, Path, Body, Cookie, Header, UploadFile, status, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, Query, Path, Body, Cookie, Header, UploadFile, status, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.params import File
 from fastapi.responses import JSONResponse
 from pydantic import AfterValidator
 
 from models import CarItem, CommonHeaders, Cookies, FilterParams, FormData, Item, ModelName, Offer, PlaneItem, Tags, UserIn
-from utils import fake_save_user
+from utils import CommonsDep, fake_save_user, verify_key, verify_token
 from data import items  # Assuming items is defined in database.py
 
 
@@ -57,33 +57,9 @@ async def create_offer(offer: Offer):
     return offer
 
 
-@app.get('/items/', response_model=list[Item], tags=[Tags.items])
-async def read_items(
-    filter_query: Annotated[FilterParams, Query()],
-    cookies: Annotated[Cookies, Cookie()],
-    headers: Annotated[CommonHeaders, Header()],
-    # id: Annotated[str | None, AfterValidator(check_valid_id)] = None
-) -> Any:
-
-    # if id:
-    #     name = data.get(id)
-    # else:
-    #     id, name = random.choice(list(data.items()))
-
-    # return {
-    #     'id': id,
-    #     'name': name
-    # }
-    # results = filter_query.model_dump()
-    # results.update({"cookies": cookies.model_dump()})
-    # results.update({"headers": headers.model_dump()})
-
-    # return results
-
-    return [
-        Item(name="Portal Gun", price=42.0),
-        Item(name="Plumbus", price=32.0),
-    ]
+@app.get('/items/', tags=[Tags.items], dependencies=[Depends(verify_token), Depends(verify_key)])
+async def read_items(commons: CommonsDep) -> Any:
+    return jsonable_encoder(commons)
 
 
 @app.post(
