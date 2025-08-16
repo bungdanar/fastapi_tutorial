@@ -1,7 +1,10 @@
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Header
-from models import UserIn, UserInDB
+from fastapi.security import OAuth2PasswordBearer
+from models import User, UserIn, UserInDB
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
 
 
 def fake_password_hasher(raw_password: str):
@@ -42,3 +45,16 @@ async def verify_key(x_key: Annotated[str, Header()]):
         raise HTTPException(status_code=400, detail="X-Key header invalid")
 
     return x_key
+
+
+def fake_decode_token(token: str):
+    return User(
+        username=f'{token}fakedecoded',
+        email='john@example.com',
+        full_name='John Doe',
+    )
+
+
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
+    user = fake_decode_token(token)
+    return user

@@ -6,10 +6,11 @@ from fastapi import Depends, FastAPI, Form, Query, Path, Body, Cookie, Header, U
 from fastapi.encoders import jsonable_encoder
 from fastapi.params import File
 from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import AfterValidator
 
-from models import CarItem, CommonHeaders, Cookies, FilterParams, FormData, Item, ModelName, Offer, PlaneItem, Tags, UserIn
-from utils import CommonsDep, fake_save_user, verify_key, verify_token
+from models import CarItem, CommonHeaders, Cookies, FilterParams, FormData, Item, ModelName, Offer, PlaneItem, Tags, User, UserIn
+from utils import CommonsDep, fake_save_user, get_current_user, verify_key, verify_token, oauth2_scheme
 from data import items  # Assuming items is defined in database.py
 
 
@@ -57,8 +58,8 @@ async def create_offer(offer: Offer):
     return offer
 
 
-@app.get('/items/', tags=[Tags.items], dependencies=[Depends(verify_token), Depends(verify_key)])
-async def read_items(commons: CommonsDep) -> Any:
+@app.get('/items/', tags=[Tags.items], )
+async def read_items(commons: CommonsDep, token: Annotated[str, Depends(oauth2_scheme)]) -> Any:
     return jsonable_encoder(commons)
 
 
@@ -165,6 +166,11 @@ async def get_model(model_name: ModelName):
 async def create_user(user: UserIn):
     user_saved = fake_save_user(user)
     return user_saved
+
+
+@app.get('/users/me', tags=[Tags.users])
+async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]):
+    return current_user
 
 
 @app.post('/login/', tags=[Tags.auth])

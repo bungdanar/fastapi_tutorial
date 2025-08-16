@@ -47,7 +47,9 @@ class Offer(BaseModel):
 
 class User(BaseModel):
     username: str
-    full_name: str | None = Field(alias='fullName', default=None)
+    email: EmailStr | None = None
+    full_name: str | None = None
+    disabled: bool | None = None
 
 
 class FilterParams(BaseModel):
