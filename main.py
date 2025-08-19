@@ -1,7 +1,8 @@
+import time
 from typing import Annotated
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, status, HTTPException
+from fastapi import Depends, FastAPI, Request, status, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from passlib.context import CryptContext
@@ -114,6 +115,15 @@ async def get_current_active_user(
     if current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
+
+
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.perf_counter()
+    response = await call_next(request)
+    process_time = time.perf_counter() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    return response
 
 
 @app.post("/token")
