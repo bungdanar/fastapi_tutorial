@@ -1,233 +1,149 @@
-from typing import Annotated, Any, Union
-import random
-from uuid import UUID
+from typing import Annotated
+from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, Form, Query, Path, Body, Cookie, Header, UploadFile, status, HTTPException, Request
-from fastapi.encoders import jsonable_encoder
-from fastapi.params import File
-from fastapi.responses import JSONResponse
-from fastapi.security import OAuth2PasswordBearer
-from pydantic import AfterValidator
+from fastapi import Depends, FastAPI, status, HTTPException
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pydantic import BaseModel
+from passlib.context import CryptContext
+import jwt
+from jwt.exceptions import InvalidTokenError
 
-from models import CarItem, CommonHeaders, Cookies, FilterParams, FormData, Item, ModelName, Offer, PlaneItem, Tags, User, UserIn
-from utils import CommonsDep, fake_save_user, get_current_user, verify_key, verify_token, oauth2_scheme
-from data import items  # Assuming items is defined in database.py
+SECRET_KEY = '697371cb25423e108c44f1ed8805c398d92d55ac19a84b6bfde6da8103e74e1c'
+ALGORITHM = 'HS256'
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
-class UnicornException(Exception):
-    def __init__(self, name: str):
-        self.name = name
+fake_users_db = {
+    "johndoe": {
+        "username": "johndoe",
+        "full_name": "John Doe",
+        "email": "johndoe@example.com",
+        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",
+        "disabled": False,
+    }
+}
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: str | None = None
+
+
+class User(BaseModel):
+    username: str
+    email: str | None = None
+    full_name: str | None = None
+    disabled: bool | None = None
+
+
+class UserInDB(User):
+    hashed_password: str
+
+
+pwd_context = CryptContext(schemes=['bcrypt'], deprecated="auto")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
 app = FastAPI()
 
 
-@app.exception_handler(UnicornException)
-async def unicorn_exception_handler(request: Request, exc: UnicornException):
-    return JSONResponse(
-        status_code=418,
-        content={
-            'message': f'Oops! {exc.name} did something. There goes a rainbow...'
-        }
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+
+def get_user(db, username: str):
+    if username in db:
+        user_dict = db[username]
+        return UserInDB(**user_dict)
+
+
+def authenticate_user(fake_db, username: str, password: str):
+    user = get_user(fake_db, username)
+    if not user:
+        return False
+    if not verify_password(password, user.hashed_password):
+        return False
+    return user
+
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
     )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = TokenData(username=username)
+    except InvalidTokenError:
+        raise credentials_exception
+    user = get_user(
+        fake_users_db,
+        username=token_data.username)  # type: ignore
+    if user is None:
+        raise credentials_exception
+    return user
 
 
-data = {
-    "isbn-9781529046137": "The Hitchhiker's Guide to the Galaxy",
-    "imdb-tt0371724": "The Hitchhiker's Guide to the Galaxy",
-    "isbn-9781439512982": "Isaac Asimov: The Complete Stories, Vol. 2",
-}
-
-
-def check_valid_id(id: str):
-    if not id.startswith(("isbn-", "imdb-")):
-        raise ValueError(
-            'Invalid ID format, it must start with "isbn-" or "imdb-"')
-    return id
-
-
-@app.get("/")
-async def root():
-    return {
-        "message": "Hello World"
-    }
-
-
-@app.post('/offers/', tags=[Tags.offers])
-async def create_offer(offer: Offer):
-    return offer
-
-
-@app.get('/items/', tags=[Tags.items], )
-async def read_items(commons: CommonsDep, token: Annotated[str, Depends(oauth2_scheme)]) -> Any:
-    return jsonable_encoder(commons)
-
-
-@app.post(
-    '/items/',
-    response_model=Item,
-    status_code=status.HTTP_201_CREATED,
-    tags=[Tags.items],
-    summary="Create an item",
-    response_description="The created item",
-)
-async def create_item(item: Item) -> Any:
-    """
-    Create an item with all the information:
-
-    - **name**: each item must have a name
-    - **description**: a long description
-    - **price**: required
-    - **tax**: if the item doesn't have tax, you can omit this
-    - **tags**: a set of unique tag strings for this item
-    """
-
-    item_dict = item.model_dump()
-    if item.tax is not None:
-        price_with_tax = item.price + item.tax
-        item_dict.update({
-            'price_with_tax': price_with_tax
-        })
-
-    return Item(**item_dict)
-
-
-@app.get('/items/{item_id}', tags=[Tags.items])
-async def read_item(
-    # item_id: Annotated[int, Path(description="The ID of the item to get", gt=0, le=100)],
-    item_id: str,
-    q: Annotated[str | None, Query(alias='item-query')] = None
+async def get_current_active_user(
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
-    if item_id not in items:
-        raise HTTPException(status_code=404, detail='Item not found', headers={
-                            'X-Error': 'There goes my error'})
-
-    return {
-        'item': items[item_id],
-    }
-
-
-@app.put('/items/{item_id}', tags=[Tags.items], response_model=Item)
-async def update_item(item_id: str, item: Annotated[Item, Body(
-    openapi_examples={
-        "normal": {
-            "summary": "A normal example",
-            "description": "A **normal** item works correctly.",
-            "value": {
-                "name": "Foo",
-                        "description": "A very nice Item",
-                        "price": 35.4,
-                        "tax": 3.2,
-            },
-        },
-        "converted": {
-            "summary": "An example with converted data",
-            "description": "FastAPI can convert price `strings` to actual `numbers` automatically",
-            "value": {
-                "name": "Bar",
-                        "price": "35.4",
-            },
-        },
-        "invalid": {
-            "summary": "Invalid data is rejected with an error",
-            "value": {
-                "name": "Baz",
-                        "price": "thirty five point four",
-            },
-        },
-    },
-)]):
-    update_item_encoded = jsonable_encoder(item)
-    items[item_id] = update_item_encoded
-    return update_item_encoded
-
-
-@app.get('/models/{model_name}', tags=[Tags.models])
-async def get_model(model_name: ModelName):
-    if model_name is ModelName.alexnet:
-        return {
-            "model_name": model_name,
-            "message": "This is the AlexNet model."
-        }
-
-    if model_name.value == "lenet":
-        return {
-            "model_name": model_name,
-            "message": "This is the LeCNN model."
-        }
-
-    return {
-        "model_name": model_name,
-        "message": "This is the ResNet model."
-    }
-
-
-@app.post('/users/', tags=[Tags.users])
-async def create_user(user: UserIn):
-    user_saved = fake_save_user(user)
-    return user_saved
-
-
-@app.get('/users/me', tags=[Tags.users])
-async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]):
+    if current_user.disabled:
+        raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
 
-@app.post('/login/', tags=[Tags.auth])
-async def login(data: Annotated[FormData, Form()]):
-    return {
-        "username": data.username,
-        "message": "Login successful"
-    }
+@app.post("/token")
+async def login_for_access_token(
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+) -> Token:
+    user = authenticate_user(
+        fake_users_db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return Token(access_token=access_token, token_type="bearer")
 
 
-@app.post('/file/', tags=[Tags.files])
-async def create_file(file: Annotated[bytes, File(description='A file read as bytes')]):
-    return {
-        'file_size': len(file)
-    }
-
-
-@app.post('/files/', tags=[Tags.files])
-async def create_files(files: Annotated[list[bytes], File(description='Multiple files as bytes')]):
-    return {
-        'file_sizes': [len(file) for file in files]
-    }
-
-
-@app.post('/uploadfile/', tags=[Tags.files])
-async def create_upload_file(file: Annotated[UploadFile, File(description='A file read as UploadFile')]):
-    return {
-        'filename': file.filename
-    }
-
-
-@app.post('/uploadfiles/', tags=[Tags.files])
-async def create_upload_files(files: Annotated[list[UploadFile], File(description='Multiple files as UploadFile')]):
-    return {
-        'filenames': [file.filename for file in files]
-    }
-
-
-@app.post('/complex-form/', tags=[Tags.etc])
-async def create_complex_form(
-    file: Annotated[bytes, File()],
-    fileb: Annotated[UploadFile, File()],
-    username: Annotated[str, Form()],
-    password: Annotated[str, Form()],
+@app.get("/users/me/", response_model=User)
+async def read_users_me(
+    current_user: Annotated[User, Depends(get_current_active_user)],
 ):
-    return {
-        'file_size': len(file),
-        'fileb_content_type': fileb.content_type,
-        'username': username,
-        'password': password
-    }
+    return current_user
 
 
-@app.get('/unicorns/{name}', tags=[Tags.etc])
-async def read_unicorn(name: str):
-    if name == 'yolo':
-        raise UnicornException(name=name)
-    return {
-        'unicorn_name': name
-    }
+@app.get("/users/me/items/")
+async def read_own_items(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
+    return [{"item_id": "Foo", "owner": current_user.username}]
