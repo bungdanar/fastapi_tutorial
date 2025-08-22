@@ -4,3 +4,4 @@ fastapi_tutorial.egg-info
 database.db
 log.txt
 static
+.pytest_cache

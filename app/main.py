@@ -1,3 +1,5 @@
+import uvicorn
+
 from typing import Annotated
 
 from fastapi import FastAPI, Header, HTTPException
@@ -36,3 +38,7 @@ async def create_item(item: Item, x_token: Annotated[str, Header()]):
         raise HTTPException(status_code=409, detail="Item already exists")
     fake_db[item.id] = item.model_dump()
     return item
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
