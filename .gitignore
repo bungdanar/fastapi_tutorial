@@ -3,3 +3,4 @@ __pycache__
 fastapi_tutorial.egg-info
 database.db
 log.txt
+static
