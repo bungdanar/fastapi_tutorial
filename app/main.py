@@ -1,28 +1,22 @@
-from contextlib import asynccontextmanager
+from functools import lru_cache
+from typing import Annotated
+from fastapi import Depends, FastAPI
 
-from fastapi import FastAPI
-
-
-def fake_answer_to_everything_ml_model(x: float):
-    return x * 42
+from .config import Settings
 
 
-ml_models = {}
+app = FastAPI()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Load the ML model
-    ml_models["answer_to_everything"] = fake_answer_to_everything_ml_model
-    yield
-    # Clean up the ML models and release the resources
-    ml_models.clear()
+@lru_cache
+def get_settings():
+    return Settings()
 
 
-app = FastAPI(lifespan=lifespan)
-
-
-@app.get("/predict")
-async def predict(x: float):
-    result = ml_models["answer_to_everything"](x)
-    return {"result": result}
+@app.get("/info")
+async def info(settings: Annotated[Settings, Depends(get_settings)]):
+    return {
+        "app_name": settings.app_name,
+        "admin_email": settings.admin_email,
+        "items_per_user": settings.items_per_user,
+    }
